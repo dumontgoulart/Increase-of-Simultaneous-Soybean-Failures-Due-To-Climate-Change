@@ -49,7 +49,7 @@ def states_mask(input_gdp_shp, state_names = None) :
     else:
         return country_shapes
 
-def plot_2d_am_map(dataarray_2d, title = None, colormap = None, vmin = None, vmax = None):
+def plot_2d_am_map(dataarray_2d, title = None, colormap = None, vmin = None, vmax = None, label_cbar = None):
     # Plot 2D map of DataArray, remember to average along time or select one temporal interval
     plt.figure(figsize=(12,10)) #plot clusters
     ax=plt.axes(projection=ccrs.LambertAzimuthalEqualArea(central_longitude=-74.5, central_latitude=0))
@@ -60,7 +60,7 @@ def plot_2d_am_map(dataarray_2d, title = None, colormap = None, vmin = None, vma
     if colormap is None:
         dataarray_2d.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), robust=True, vmin = vmin, vmax = vmax, zorder=20)
     elif colormap is not None:
-        dataarray_2d.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), robust=True, cmap= colormap, vmin = vmin, vmax = vmax, zorder=20)
+        dataarray_2d.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), robust=True, cmap= colormap, vmin = vmin, vmax = vmax, cbar_kwargs={'label':label_cbar}, zorder=20)
     ax.add_geometries([arg_border0], ccrs.PlateCarree(),edgecolor='black', facecolor='None', alpha=0.5, lw=0.7, zorder=21)
     ax.set_extent([-115,-34,-41,44])
     if title is not None:
@@ -197,15 +197,16 @@ arg_shapes = states_mask('GIS/gadm36_ARG_1.shp')
 # =============================================================================
 # DS_mirca_test = xr.open_dataset("../../paper_hybrid_agri/data/americas_mask_ha.nc", decode_times=False).rename({'latitude': 'lat', 'longitude': 'lon','annual_area_harvested_rfc_crop08_ha_30mn':'harvest_area'})
 DS_mirca_test = xr.open_dataset("../../paper_hybrid_agri/data/soy_harvest_spam_native_05x05.nc", decode_times=False)
+plot_2d_am_map(DS_mirca_test['harvest_area'])
 
 #### HARVEST DATA
 DS_harvest_area_sim = xr.load_dataset("../../paper_hybrid_agri/data/soybean_harvest_area_calculated_americas_hg.nc", decode_times=False)
-DS_harvest_area_sim = DS_harvest_area_sim.sel(time=2012) #.sel(time = slice(2013,2015)).mean('time') #.sel(time = slice(1979,2016))
+DS_harvest_area_sim = DS_harvest_area_sim.sel(time=2012) 
 DS_harvest_area_sim = DS_harvest_area_sim.where(DS_mirca_test['harvest_area'] > 0 )
+DS_harvest_area_sim = rearrange_latlot(DS_harvest_area_sim)
 DS_mirca_test = DS_harvest_area_sim
-# plot_2d_am_map(DS_mirca_test['harvest_area'].sel(time = 1980))
-# plot_2d_am_map(DS_mirca_test['harvest_area'].sel(time = 2016))
-
+plot_2d_am_map(DS_mirca_test['harvest_area'])
+# plot_2d_am_map(DS_harvest_area_sim['harvest_area'])
 
 # =============================================================================
 # GLOBAL - EPIC 
@@ -315,26 +316,26 @@ plot_2d_am_map(DS_y_epic_am["yield"].mean('time'))
 plot_2d_am_map(DS_y_obs_am["Yield"].mean('time'))
 
 ##### concatenate the two types of data
-DS_y_obs_am['Yield'] = DS_y_obs_am['Yield'].where(DS_y_epic_am['yield'] >= 0.0 )
-DS_y_epic_am['yield'] = DS_y_epic_am['yield'].where(DS_y_obs_am['Yield'] >= 0.0 )
+DS_y_obs_am_clip = DS_y_obs_am.where(DS_y_epic_am['yield'] >= 0.0 )
+DS_y_epic_am_clip = DS_y_epic_am.where(DS_y_obs_am['Yield'] >= 0.0 )
 
-corr_3d = xr.corr(DS_y_epic_am["yield"], DS_y_obs_am["Yield"], dim="time", )
+corr_3d = xr.corr(DS_y_epic_am_clip["yield"], DS_y_obs_am_clip["Yield"], dim="time", )
 plot_2d_am_map(corr_3d)
 
 corr_3d_high = corr_3d.where(corr_3d > 0.4)
 plot_2d_am_map(corr_3d_high)
 
 # Compare
-df_epic_am = DS_y_obs_am.to_dataframe().dropna()
-df_obs_am = DS_y_obs_am.to_dataframe().dropna()
+df_epic_am = DS_y_obs_am_clip.to_dataframe().dropna()
+df_obs_am = DS_y_obs_am_clip.to_dataframe().dropna()
 
-start_date_det, end_date_det = 1979, 2016
+start_date_det, end_date_det = start_date, end_date
 # Detrend timeseries
-DS_y_obs_am_det = xr.DataArray( detrend_dim(DS_y_obs_am['Yield'], 'time') + DS_y_obs_am['Yield'].mean('time'), name= DS_y_obs_am['Yield'].name, attrs = DS_y_obs_am['Yield'].attrs)
+DS_y_obs_am_det = xr.DataArray( detrend_dim(DS_y_obs_am_clip['Yield'], 'time') + DS_y_obs_am_clip['Yield'].mean('time'), name= DS_y_obs_am_clip['Yield'].name, attrs = DS_y_obs_am_clip['Yield'].attrs)
 DS_y_obs_am_det = DS_y_obs_am_det.sel(time = slice(start_date_det, end_date_det))
 DS_y_obs_am_det.to_netcdf("soybean_yields_america_detrended_1978_2016.nc")
 
-DS_y_epic_am_det = xr.DataArray( detrend_dim(DS_y_epic_am["yield"], 'time') + DS_y_epic_am["yield"].mean('time'), name= DS_y_epic_am["yield"].name, attrs = DS_y_epic_am["yield"].attrs)
+DS_y_epic_am_det = xr.DataArray( detrend_dim(DS_y_epic_am_clip["yield"], 'time') + DS_y_epic_am_clip["yield"].mean('time'), name= DS_y_epic_am_clip["yield"].name, attrs = DS_y_epic_am_clip["yield"].attrs)
 DS_y_epic_am_det = DS_y_epic_am_det.sel(time = slice(start_date_det, end_date_det))
 
 plt.vlines(DS_y_epic_am_det.time, np.min(DS_y_obs_am_det.mean(['lat','lon'])), np.max(DS_y_epic_am_det.mean(['lat','lon'])), linestyles ='dashed', colors = 'k')
@@ -375,6 +376,10 @@ plt.ylabel('Yield (ton/ha)')
 plt.tight_layout()
 plt.show()
 
+DS_mirca_test['harvest_area'].where(DS_y_obs_br['Yield'] > -1).sum(['lat','lon']).plot()
+DS_mirca_test['harvest_area'].where(DS_y_obs_br['Yield'] > -1).sum(['lat','lon']).sel(time=slice(1990,2015)).plot()
+
+
 #%% Machine learning model training
 import tensorflow as tf
 from sklearn.ensemble import RandomForestRegressor
@@ -401,10 +406,14 @@ np.random.seed(1)
 python_random.seed(1)
 tf.random.set_seed(1)
 
-def calibration(X_origin,y_origin,type_of_model='RF'):
-    # Shuffle and Split data
+def calibration(X_origin,y_origin,type_of_model='RF', test_year = None):
     X, y = shuffle(X_origin, y_origin, random_state=0)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=0)
+    if test_year == None:
+        # Shuffle and Split data
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
+    else:
+        X_train, y_train = X.loc[X.index.get_level_values('time') != test_year], y.loc[y.index.get_level_values('time') != test_year]
+        X_test, y_test = X.loc[X.index.get_level_values('time') == test_year], y.loc[y.index.get_level_values('time') == test_year]
        
     if type_of_model == 'RF':
         model_rf = RandomForestRegressor(n_estimators=100, random_state=0, n_jobs=-1,
@@ -430,12 +439,12 @@ def calibration(X_origin,y_origin,type_of_model='RF'):
         ])
     
     elif type_of_model == 'DNN':
-# 1024, 800, 512, 0.001, 0.2, 0, 433,
-# 256	800	512	0.005	0.2, 442
-# 1024	800	512	0.01	0.2	0	483
-# 256 and epoch: 800 and neurons: 512 and learning rate : 0.01, dropout: 0.2,l2: 0 
-             
-        epochs_train = 529
+#     	extra layer	batch	epoch	nodes	lr	dropout_value	best_epoch	R2	MAE	RMSE
+#   31	True	          256	700	512	0.01	0.2	514	0.651	0.24641	0.34128
+#   1	False	     1024	700	512	0.01	0.2	564	0.648	0.24794	0.34267
+#   30	True	          256	700	512	0.005	0.2	635	0.648	0.24502	0.34266
+# number of epochs 529 or 431
+        epochs_train = 441 #390
         batch_size_train = 1024
         nodes_size = 512
         learning_rate_train = 0.01
@@ -446,27 +455,27 @@ def calibration(X_origin,y_origin,type_of_model='RF'):
         # =============================================================================
         def create_model():
             train_model = Sequential()
-            train_model.add(Dense(nodes_size, input_dim=len(X_train.columns), kernel_regularizer=regularizers.l2(regul_value))) 
+            train_model.add(Dense(nodes_size, input_dim=len(X_train.columns), kernel_initializer="he_normal", kernel_regularizer=regularizers.l2(regul_value))) 
             train_model.add(BatchNormalization())
             train_model.add(Activation('relu'))
             train_model.add(Dropout(dropout_train))
     
-            train_model.add(Dense(nodes_size, kernel_regularizer=regularizers.l2(regul_value)))
+            train_model.add(Dense(nodes_size, kernel_initializer="he_normal", kernel_regularizer=regularizers.l2(regul_value)))
             train_model.add(BatchNormalization())
             train_model.add(Activation('relu'))
             train_model.add(Dropout(dropout_train))
     
-            train_model.add(Dense(nodes_size, kernel_regularizer=regularizers.l2(regul_value)))
+            train_model.add(Dense(nodes_size, kernel_initializer="he_normal", kernel_regularizer=regularizers.l2(regul_value)))
             train_model.add(BatchNormalization())
             train_model.add(Activation('relu'))
             train_model.add(Dropout(dropout_train))
            
-            train_model.add(Dense(nodes_size, kernel_regularizer=regularizers.l2(regul_value)))
+            train_model.add(Dense(nodes_size, kernel_initializer="he_normal", kernel_regularizer=regularizers.l2(regul_value)))
             train_model.add(BatchNormalization())
             train_model.add(Activation('relu'))
             train_model.add(Dropout(dropout_train))
             
-            train_model.add(Dense(nodes_size, kernel_regularizer=regularizers.l2(regul_value)))
+            train_model.add(Dense(nodes_size, kernel_initializer="he_normal", kernel_regularizer=regularizers.l2(regul_value)))
             train_model.add(BatchNormalization())
             train_model.add(Activation('relu'))
             train_model.add(Dropout(dropout_train))
@@ -549,7 +558,27 @@ def calibration(X_origin,y_origin,type_of_model='RF'):
     return df_y_pred, df_y_pred_total, model, full_model 
 
 #%% EXTREME CLIMATE INDICES
- 
+# Check data only for the US
+
+def df_sub_selection_spatial(df, mask):
+    DS_input_hybrid_am = xr.Dataset.from_dataframe(df)
+    DS_input_hybrid_am = rearrange_latlot(DS_input_hybrid_am)
+    DS_input_hybrid_us = DS_input_hybrid_am.where(mask > -10)
+    df_input_hybrid_us = DS_input_hybrid_us.to_dataframe().dropna()
+    return df_input_hybrid_us
+# df_input_hybrid_us = df_sub_selection_spatial(df_input_hybrid_am, DS_y_obs_us_all['Yield'])
+
+def country_location_add(df, US = DS_y_obs_us_all['Yield'], BR = DS_y_obs_br['Yield'], ARG = DS_y_obs_arg['Yield']):
+    DS_country_us = xr.where(US >-100, 'US', np.nan)
+    DS_country_br = xr.where(BR >-100, 'BR', np.nan)
+    DS_country_arg = xr.where(ARG >-100, 'ARG', np.nan)
+    DS_country_all = xr.merge([DS_country_us, DS_country_br, DS_country_arg], compat='no_conflicts')
+    df_country_all = DS_country_all.to_dataframe().dropna().reorder_levels(['time','lat','lon']).sort_index()
+    df_country_am = df_country_all.where(df[df.columns[0]] > -100).dropna()
+    df = pd.concat([df, df_country_am], axis =1 )
+    df = pd.get_dummies(df)
+    return df
+
 def units_conversion(DS_exclim):
     da_list = []
     for feature in list(DS_exclim.keys()):
@@ -564,11 +593,11 @@ def units_conversion(DS_exclim):
     return xr.merge(da_list)    
 
 # Start - take the initial year of the observed dataset - one year so we can shift the epic data 12 months forwards
-start_date, end_date = f'01-01-{DS_y_obs_am_det.time[0].values - 1}','31-12-2016'
+start_date_clim, end_date_clim = f'01-01-{DS_y_obs_am_det.time[0].values - 1}','31-12-2016'
 
-DS_exclim_us = xr.open_mfdataset('../../paper_hybrid_agri/data/climpact-master/climpact-master/www/output_historical_us/monthly_data/*.nc').sel(time=slice(start_date, end_date))
-DS_exclim_arg = xr.open_mfdataset('../../paper_hybrid_agri/data/climpact-master/climpact-master/www/output_historical_arg/monthly_data/*.nc').sel(time=slice(start_date, end_date))
-DS_exclim_br = xr.open_mfdataset('../../paper_hybrid_agri/data/climpact-master/climpact-master/www/output_gswp3/monthly_data/*.nc').sel(time=slice(start_date, end_date))
+DS_exclim_us = xr.open_mfdataset('../../paper_hybrid_agri/data/climpact-master/climpact-master/www/output_historical_us/monthly_data/*.nc').sel(time=slice(start_date_clim, end_date_clim))
+DS_exclim_arg = xr.open_mfdataset('../../paper_hybrid_agri/data/climpact-master/climpact-master/www/output_historical_arg/monthly_data/*.nc').sel(time=slice(start_date_clim, end_date_clim))
+DS_exclim_br = xr.open_mfdataset('../../paper_hybrid_agri/data/climpact-master/climpact-master/www/output_gswp3/monthly_data/*.nc').sel(time=slice(start_date_clim, end_date_clim))
 
 #SHIFT 12 months forward
 DS_exclim_br = DS_exclim_br.shift(time = 12)
@@ -583,10 +612,10 @@ DS_exclim_am = rearrange_latlot(DS_exclim_am)
 plot_2d_am_map(DS_exclim_am['txm'].mean('time'))
 
 # New dataset
-DS_exclim_am = DS_exclim_am.drop_vars(['fd','id','time_bnds','spi','spei','dtr','tr','tnlt2', 'tnltm2','tnltm20', 'tmlt5', 'tmge5', 'tmge10']) # Always zero
-list_features = ['prcptot', 'txm'] # Most important variables: TR, TXGE35, TNM, TXM and precptot for water
+DS_exclim_am = DS_exclim_am.drop_vars(['fd','id','spei','time_bnds','spi','dtr','tr','tnlt2','tmlt10','tnltm2','tnltm20','txn', 'tmlt5', 'tmge5','tx10p', 'tmge10','tn10p', 'tnm', 'tnn', 'tmm']) # Always zero
+# DS_exclim_am['spei'] = DS_exclim_am['spei'].sel(scale = 1)
+list_features = ['prcptot', 'txm'] 
 DS_exclim_am = DS_exclim_am[list_features] 
-# DS_exclim_am = DS_exclim_am.rename({'tr':'trop'}) #Only if TR is used to avoid confusion with dtr
 df_list_features = list(DS_exclim_am.keys())
 
 # Convert data from time to values (number of days)
@@ -654,14 +683,14 @@ def calendar_multiyear_adjust(month_list, df_entry, mode = "shift_one_year"):
             print(f'No planting dates for month {month}')
     return df.to_frame().dropna()
 
-def dynamic_calendar(DS):
+def dynamic_calendar(DS, df_calendar_month_am):
     # First reshape each year to make a 24 month calendar
     df_clim_shift = reshape_shift(DS)
     df_clim_shift_12 = reshape_shift(DS, shift_time = 12)
     # Combine both dataframes and constraint it to be below 2016 just in case
-    df_test_reshape_twoyears = df_clim_shift.dropna().join(df_clim_shift_12)
+    df_clim_reshape_twoyears = df_clim_shift.dropna().join(df_clim_shift_12)
     ### Join and change name to S for the shift values
-    df_feature_reshape_shift = df_test_reshape_twoyears.dropna().join(df_calendar_month_am)
+    df_feature_reshape_shift = df_clim_reshape_twoyears.dropna().join(df_calendar_month_am)
     
     list_df_feature_reshape_shift = []
     # Divide the dataset by climatic feature so the shifting does not mix the different variables together
@@ -669,7 +698,7 @@ def dynamic_calendar(DS):
     
         df_feature_reshape_shift_var = pd.concat([df_feature_reshape_shift.loc[:,'plant'], df_feature_reshape_shift.filter(like=feature)], axis = 1)
         
-        # Shift accoording to month indicator (hence +1) - SLOW   
+        # Shift accoording to month indicator (hence +1) - SLOW   // tried with query but also slow.. what to do?
         list_shifted_variables = [df_feature_reshape_shift_var.shift(-(int(indicator))+1, axis = 1).where(indicator == df_feature_reshape_shift_var['plant']).dropna( how = 'all') 
                                   for indicator in np.unique(df_feature_reshape_shift_var['plant'])]
         
@@ -685,6 +714,7 @@ def dynamic_calendar(DS):
 DS_cal_ggcmi = xr.open_dataset('../../paper_hybrid_agri/data/soy_rf_ggcmi_crop_calendar_phase3_v1.01.nc4') / (365/12)
 DS_cal_sachs = xr.open_dataset('../../paper_hybrid_agri/data/Soybeans.crop.calendar_sachs_05x05.nc') / (365/12) 
 DS_cal_mirca = xr.open_dataset('../../paper_hybrid_agri/data/mirca2000_soy_calendar.nc') # 
+DS_cal_ggcmi_test = xr.open_dataset('../../paper_hybrid_agri/data/soy_rf_ggcmi_crop_calendar_phase3_v1.01.nc4').where(DS_y_obs_am_det.mean('time') >= -10 )
 
 # =============================================================================
 # TEST CALENDARS
@@ -715,7 +745,7 @@ plot_2d_am_map(DS_cal_mirca_subset['start'], title = 'MIRCA start')
 # plot_2d_am_map(DS_cal_mirca_subset['end']-DS_cal_mirca_subset['start'] , title = 'MIRCA length')
 
 plot_2d_am_map(DS_cal_ggcmi_subset['planting_day'], title = 'GGCMI start')
-plot_2d_am_map(DS_cal_ggcmi_subset['maturity_day'], title = 'GGCMI maturity')
+plot_2d_am_map(DS_cal_ggcmi_subset['maturity_day']-1, title = 'GGCMI maturity')
 plot_2d_am_map(DS_cal_ggcmi_subset['growing_season_length'].dt.days, title = 'GGCMI length')
 plot_2d_am_map(DS_cal_ggcmi_subset['data_source_used'], title = 'GGCMI length')
 
@@ -735,7 +765,7 @@ df_calendar_month_am = df_chosen_calendar[['plant']].apply(np.rint).astype(np.fl
 # transform the months that are early in the year to the next year (ex 1 -> 13). Attention as this should be done only for the south america region
 df_calendar_month_am = calendar_multiyear_adjust([1,2,3,4,5], df_calendar_month_am['plant'])
 
-# BIG TEST IF HERE
+# Define the maturity date and then subtract X months
 df_calendar_month_am['plant'] = df_calendar_month_am['plant'] - 1
 
 ### LOAD climate date and clip to the calendar cells    
@@ -746,7 +776,7 @@ DS_exclim_am_det_clip.resample(time="1MS").mean(dim="time")
 # =============================================================================
 # CONVERT CLIMATIC VARIABLES ACCORDING TO THE SOYBEAN GROWING SEASON PER GRIDCELL 
 # =============================================================================
-df_features_reshape_2years_am = dynamic_calendar(DS_exclim_am_det_clip)
+df_features_reshape_2years_am = dynamic_calendar(DS_exclim_am_det_clip, df_calendar_month_am)
 ###################################################
 
 ### Select specific months ###################################################
@@ -760,12 +790,11 @@ df_feature_season_6mon_am = df_feature_season_6mon_am.where(df_obs_am_det['Yield
 # SECOND DETRENDING PART - SEASONAL
 DS_feature_season_6mon_am = xr.Dataset.from_dataframe(df_feature_season_6mon_am)
 DS_feature_season_6mon_am = rearrange_latlot(DS_feature_season_6mon_am)
-
 DS_feature_season_6mon_am_det = detrend_dataset(DS_feature_season_6mon_am, deg = 'free')
-
 df_feature_season_6mon_am_det = DS_feature_season_6mon_am_det.to_dataframe().dropna()
 df_feature_season_6mon_am_det = df_feature_season_6mon_am_det.rename_axis(list(DS_feature_season_6mon_am_det.coords)).reorder_levels(['time','lat','lon']).sort_index()
 
+# Compare detrending results
 for feature in df_feature_season_6mon_am_det.columns:
     df_feature_season_6mon_am[feature].groupby('time').mean().plot(label = 'old')
     df_feature_season_6mon_am_det[feature].groupby('time').mean().plot(label = 'detrend')
@@ -788,8 +817,10 @@ df_obs_am_det_clip = df_obs_am_det.where(df_feature_season_6mon_am['prcptot'+suf
 feature_importance_selection(df_feature_season_6mon_am, df_obs_am_det_clip['Yield']) 
  
 print('Dynamic ECE results:') 
-X, y = df_feature_season_6mon_am, df_obs_am_det_clip['Yield']
-y_pred_exclim_dyn_am, y_pred_total_exclim_dyn_am, model_exclim_dyn_am, full_model_exclim_dyn_am = calibration(X, y, type_of_model='RF')
+df_feature_season_6mon_am_countryloc = country_location_add(df_feature_season_6mon_am)
+X, y = df_feature_season_6mon_am_countryloc, df_obs_am_det_clip['Yield']
+y_pred_exclim_dyn_am, y_pred_total_exclim_dyn_am, model_exclim_dyn_am, full_model_exclim_dyn_am = calibration(X, y, type_of_model='DNN')
+y_pred_exclim_dyn_am_2012, y_pred_total_exclim_dyn_am_2012, model_exclim_dyn_am_2012, full_model_exclim_dyn_am_2012 = calibration(X, y, type_of_model='RF',test_year = 2012)
 
 # # =============================================================================
 # # # Turn on if the selection of variables in of interest
@@ -797,7 +828,8 @@ y_pred_exclim_dyn_am, y_pred_total_exclim_dyn_am, model_exclim_dyn_am, full_mode
 # df_feature_performance = pd.DataFrame(columns=['performance'], index = df_list_features)
 # for feature in df_list_features[0:]: #Remove other pcptot influence
 #     print('feature is', feature)
-#     X = df_feature_season_6mon_am.loc[:,['prcptot_1','prcptot_2','prcptot_3', feature+'_1', feature + '_2', feature + '_3' ] ] 
+#     # X = df_feature_season_6mon_am.loc[:,['prcptot_1','prcptot_2','prcptot_3', feature+'_1', feature + '_2', feature + '_3' ] ] 
+#     X = df_feature_season_6mon_am.loc[:,[feature+'_1', feature + '_2', feature + '_3' ] ] 
     
 #     y_pred_exclim_dyn_am, y_pred_total_exclim_dyn_am, model_exclim_dyn_am, full_model_exclim_dyn_am = calibration(X, y)
     
@@ -809,16 +841,42 @@ y_pred_exclim_dyn_am, y_pred_total_exclim_dyn_am, model_exclim_dyn_am, full_mode
     
 #     # report performance
 #     df_feature_performance.loc[feature] = round(r2_score(y_test, y_pred),2)
+    
+# # =============================================================================
+# # # Turn on if the selection of variables in of interest
+# # =============================================================================
+# features_precip =  df_list_features[0:7] 
+# features_temp = df_list_features[7:] 
+# df_list_features_comb = [a + "_" + b for a in features_precip for b in features_temp ]
+# df_feature_performance_comb = pd.DataFrame( columns=['performance'], index = df_list_features_comb )
+
+# for feature_precip in features_precip: #Remove other pcptot influence
+#     for feature_temp in features_temp:
+#         print('combination features is', feature_precip, feature_temp)
+#         X = df_feature_season_6mon_am.loc[:,[feature_precip+'_1', feature_precip+'_2', feature_precip+'_3', feature_temp+'_1', feature_temp + '_2', feature_temp + '_3' ] ] 
+        
+#         y_pred_exclim_dyn_am, y_pred_total_exclim_dyn_am, model_exclim_dyn_am, full_model_exclim_dyn_am = calibration(X, y)
+        
+#         X_config, y_config = shuffle(X, y, random_state=0)
+#         X_train, X_test, y_train, y_test = train_test_split(X_config, y_config, test_size=0.1, random_state=0)
+        
+#         # Test performance
+#         y_pred = model_exclim_dyn_am.predict(X_test)
+        
+#         # report performance
+#         df_feature_performance_comb.loc[df_list_features_comb] = round(r2_score(y_test, y_pred),2)
 
 
 #%% EPIC RF
 df_epic_am_det_clip = df_epic_am_det.where(df_feature_season_6mon_am['prcptot'+suffixes[0]] > -100).dropna().reorder_levels(['time','lat','lon']).sort_index()
+df_epic_am_det_clip_countryloc = country_location_add(df_epic_am_det_clip)
 
-X, y = df_epic_am_det_clip, df_obs_am_det_clip['Yield']
+X, y = df_epic_am_det_clip_countryloc, df_obs_am_det_clip['Yield']
 
 # Standard model
 print('Standard Epic results:')
-y_pred_epic_am, y_pred_total_epic_am, model_epic_am, full_model_epic_am  = calibration(X, y)
+y_pred_epic_am, y_pred_total_epic_am, model_epic_am, full_model_epic_am  = calibration(X, y, type_of_model='DNN')
+y_pred_epic_am_am_2012, y_pred_total_epic_am_2012, model_epic_am_2012, full_model_epic_am_2012 = calibration(X, y, type_of_model='RF',test_year = 2012)
 
 #%% Hybrid model
 # Combine the EPIC output with the Extreme climate indices to generate the input dataset for the hybrid model
@@ -831,14 +889,39 @@ df_obs_am_det_clip.to_csv('dataset_obs_yield_am_forML.csv')
 # Feature selection
 feature_importance_selection(df_input_hybrid_am, df_obs_am_det_clip)
 
-# Evaluate Model
+# Add country location indicators [1,0,0]
+df_input_hybrid_am = country_location_add(df_input_hybrid_am)
+
+# # =============================================================================
+# # # Turn on if the selection of variables in of interest
+# # =============================================================================
+# df_list_features_hybrid = df_list_features.copy().append('yield')
+# df_feature_performance = pd.DataFrame(columns=['performance'], index = df_list_features_hybrid)
+# for feature in df_list_features[7:]: #Remove other pcptot influence
+#     print('feature is', feature)
+#     X = df_input_hybrid_am.loc[:,['yield', 'prcptot_1','prcptot_2','prcptot_3', feature+'_1', feature + '_2', feature + '_3' ] ] 
+#     # X = df_feature_season_6mon_am.loc[:,[feature+'_1', feature + '_2', feature + '_3' ] ] 
+    
+#     y_pred_exclim_dyn_am, y_pred_total_exclim_dyn_am, model_exclim_dyn_am, full_model_exclim_dyn_am = calibration(X, y)
+    
+#     X_config, y_config = shuffle(X, y, random_state=0)
+#     X_train, X_test, y_train, y_test = train_test_split(X_config, y_config, test_size=0.1, random_state=0)
+    
+#     # Test performance
+#     y_pred = model_exclim_dyn_am.predict(X_test)
+    
+#     # report performance
+#     df_feature_performance.loc[feature] = round(r2_score(y_test, y_pred),2)
+    
+# =============================================================================
 print('Standard Hybrid results:')
 X, y = df_input_hybrid_am, df_obs_am_det_clip['Yield']
-
+# X, y = df_input_hybrid_us, df_obs_am_det_clip_us['Yield']
 y_pred_hyb_am_rf, y_pred_total_hyb_am_rf, model_hyb_am_rf, full_model_hyb2_am_rf = calibration(X, y, type_of_model='RF')
 # Deep neural network - takes some time to run 
 y_pred_hyb_am2, y_pred_total_hyb_am2, model_hyb_am2, full_model_hyb_am2 = calibration(X, y, type_of_model='DNN')
 
+y_pred_hyb_am_2012, y_pred_total_hyb_am_2012, model_hyb_am_2012, full_model_hyb_am_2012 = calibration(X, y, type_of_model='RF',test_year = 2012)
 
 # # =============================================================================
 # # Save the Model 
@@ -898,18 +981,28 @@ def conversion_dataframe_dataset(df_input, model, df_base = df_obs_am_det_clip):
 
 # Convert the dataframes into Datasets
 df_predict_hyb_am, DS_predict_test_hist = conversion_dataframe_dataset(df_input_hybrid_am, full_model_hyb_am2, df_base = df_obs_am_det_clip)
-df_predict_epic_hist, DS_predict_epic_hist = conversion_dataframe_dataset(df_epic_am_det_clip, full_model_epic_am, df_base = df_obs_am_det_clip)
-df_predict_clim_hist, DS_predict_clim_hist = conversion_dataframe_dataset(df_feature_season_6mon_am, full_model_exclim_dyn_am, df_base = df_obs_am_det_clip)
+df_predict_epic_hist, DS_predict_epic_hist = conversion_dataframe_dataset(df_epic_am_det_clip_countryloc, full_model_epic_am, df_base = df_obs_am_det_clip)
+df_predict_clim_hist, DS_predict_clim_hist = conversion_dataframe_dataset(df_feature_season_6mon_am_countryloc, full_model_exclim_dyn_am, df_base = df_obs_am_det_clip)
     
+# ### Run a synthetic simulation based on the 2012 harvest area constant and changing yield values per year.
+# from trial_2012_mask import mask_2012_crops
+# df_input_hybrid_am_2012_mask, df_epic_am_det_2012, DS_y_epic_am_2012, DS_feature_season_6mon_2012 = mask_2012_crops(start_date = 1980, 
+#                                                                                                                     end_date = 2015)
+# ### Obtain similar values for the 2012 mask
+# df_predict_hyb_2012_mask, DS_predict_clim_2012_mask = conversion_dataframe_dataset(df_input_hybrid_am_2012_mask, 
+#                                                                                    full_model_hyb_am2, df_base = df_epic_am_det_2012)
+
 # =============================================================================
 # # save .nc files for AM, US, BR, ARG for the hybrid predictions
 # =============================================================================
 DS_predict_test_hist.to_netcdf('output_models_am/hybrid_epic-iiasa_gswp3-w5e5_obsclim_2015soc_default_yield-soy-noirr_global_annual_1901_2016.nc')
-DS_predict_test_hist.where(DS_y_obs_us_all['Yield'] > -1).to_netcdf('output_models_am/hybrid_epic_us-iiasa_gswp3-w5e5_obsclim_2015soc_default_yield-soy-noirr_global_annual_1901_2016.nc')
-DS_predict_test_hist.where(DS_y_obs_br['Yield'] > -1).to_netcdf('output_models_am/hybrid_epic_br-iiasa_gswp3-w5e5_obsclim_2015soc_default_yield-soy-noirr_global_annual_1901_2016.nc')
-DS_predict_test_hist.where(DS_y_obs_arg['Yield'] > -1).to_netcdf('output_models_am/hybrid_epic_arg-iiasa_gswp3-w5e5_obsclim_2015soc_default_yield-soy-noirr_global_annual_1901_2016.nc')
+# DS_predict_clim_2012_mask.to_netcdf('output_models_am/hybrid_epic-iiasa_gswp3-w5e5_obsclim_2015soc_default_yield-soy-noirr_2012_mask.nc')
+# df_input_hybrid_am_2012_mask.to_csv('dataset_input_hybrid_am_forML_2012.csv')
 
-shift_2012 = DS_predict_test_hist['Yield'].sel(time=2012) / DS_predict_test_hist['Yield'].mean(['time']) 
+# DS_predict_test_hist or DS_predict_clim_2012_mask
+DS_predict_test_hist.where(DS_y_obs_us_all['Yield'].mean('time') > -1).to_netcdf('output_models_am/hybrid_epic_us-iiasa_gswp3-w5e5_obsclim_2015soc_default_yield-soy-noirr_global_annual_1901_2016.nc')
+DS_predict_test_hist.where(DS_y_obs_br['Yield'].mean('time') > -1).to_netcdf('output_models_am/hybrid_epic_br-iiasa_gswp3-w5e5_obsclim_2015soc_default_yield-soy-noirr_global_annual_1901_2016.nc')
+DS_predict_test_hist.where(DS_y_obs_arg['Yield'].mean('time') > -1).to_netcdf('output_models_am/hybrid_epic_arg-iiasa_gswp3-w5e5_obsclim_2015soc_default_yield-soy-noirr_global_annual_1901_2016.nc')
 
 
 # =============================================================================
@@ -923,6 +1016,8 @@ plot_2d_am_map(DS_predict_test_hist['Yield'].mean(['time']), title = 'Hybrid') #
 # Difference between the event anomaly and the predicted by the hybrid model
 plot_2d_am_map(DS_predict_test_hist['Yield'].sel(time=2012) - DS_y_obs_am_det_regul.sel(time=2012), colormap = 'RdBu', vmin=-1, vmax = 1)
 plot_2d_am_map(DS_predict_test_hist['Yield'].sel(time=2012) - DS_predict_test_hist['Yield'].mean('time'), colormap = 'RdBu', title = '2012 event anomaly')
+
+# plot_2d_am_map(DS_predict_test_hist['Yield'].sel(time=2012) - DS_predict_clim_2012_mask['Yield'].sel(time=2012), colormap = 'RdBu', vmin=-1, vmax = 1, title = 'Difference hybrid models')
 
 # PLOTS
 plt.figure(figsize=(10,6), dpi=300) #plot clusters
@@ -987,14 +1082,12 @@ for df_version, label_to_be_used in zip([df_epic_am_det['yield'], df_predict_epi
     # plt.savefig('paper_figures/epic_usda_validation.png', format='png', dpi=500)
     plt.show()
    
-X_train, X_test, y_train, y_test = train_test_split(df_input_hybrid_am, df_obs_am_det_clip['Yield'], test_size=0.1, random_state=0)
-
 X_analysis, y_analysis = shuffle(X, y, random_state=0)
-X_train, X_test, y_train, y_test = train_test_split(X_analysis, y_analysis, test_size=0.1, random_state=0)
+X_train, X_test, y_train, y_test = train_test_split(X_analysis, y_analysis, test_size=0.2, random_state=0)
 
 df_epic_am_det_clip = df_epic_am_det.where(df_obs_am_det_clip['Yield'] > -1).dropna()
 X_epic_analysis = shuffle(df_epic_am_det_clip, random_state=0)
-X_epic_train, X_epic_test = train_test_split(X_epic_analysis, test_size=0.1, random_state=0)
+X_epic_train, X_epic_test = train_test_split(X_epic_analysis, test_size=0.2, random_state=0)
 
 
 # Gridded comparison for each model during test set (OoS)  - degree of explanation - if error shows up, check test_size
@@ -1009,7 +1102,7 @@ results_performance_oot = pd.DataFrame([[round(r2_score(y_test, X_epic_test),2),
                                        [round(r2_score(y_test, y_pred_hyb_am2),2), round(mean_absolute_error(y_test, y_pred_hyb_am2),3), round(mean_squared_error(y_test, y_pred_hyb_am2, squared=False),3)]],
                                        columns = ['R2','MAE','RMSE'], index = ['EPIC model', 'Stat. model EPIC','Stat. model climate indices', 'Hybrid model'])
 
-
+print(results_performance_oot)
 # Gridded comparison for each model with full model (NOT OoS)  - degree of explanation - if error shows up, check test_size
 print("R2 OBS-EPIC_original on entire set:",round(r2_score(df_obs_am_det['Yield'], df_epic_am_det['yield']),2))
 print("R2 OBS-RF:EPIC full model on entire set:",round(r2_score(y, y_pred_total_epic_am),2))
@@ -1024,11 +1117,41 @@ print("Weighted R2 OBS-Hybrid:",round(r2_score(DS_y_obs_det_weighted_am['Yield']
 print("_______________________________________")
 
 # =============================================================================
+# Measure the performance by country
+# =============================================================================
+def model_performance_tests(y_test, y_pred, country):
+    print(f"{country} R2:",round(r2_score(y_test, y_pred),2),
+          "MAE:",round(mean_absolute_error(y_test, y_pred),3),
+          "RMSE:",round(mean_squared_error(y_test, y_pred, squared=False),3))
+    
+def model_performance_test_country(y_pred_model, model, epic = False):        
+    y_test_us = y_test.where(df_country_loc_test['Yield_US'] == 1).dropna()
+    y_test_br = y_test.where(df_country_loc_test['Yield_BR'] == 1).dropna()
+    y_test_arg = y_test.where(df_country_loc_test['Yield_ARG'] == 1).dropna()
+    
+    y_pred_us = y_pred_model.where(df_country_loc_test['Yield_US'] == 1).dropna()
+    y_pred_br = y_pred_model.where(df_country_loc_test['Yield_BR'] == 1).dropna()
+    y_pred_arg = y_pred_model.where(df_country_loc_test['Yield_ARG'] == 1).dropna()
+    print(model)
+    model_performance_tests(y_test_us, y_pred_us, 'US')
+    model_performance_tests(y_test_br, y_pred_br, 'BR')
+    model_performance_tests(y_test_arg, y_pred_arg, 'ARG')
+    
+df_country_loc, df_country_loc = shuffle(df_epic_am_det_clip_countryloc, df_epic_am_det_clip_countryloc, random_state=0)
+df_country_loc_train, df_country_loc_test, df_country_loc_train, df_country_loc_test = train_test_split(df_country_loc, df_country_loc, test_size=0.2, random_state=0)
+
+model_performance_test_country(X_epic_test, model = 'Pure EPIC')
+model_performance_test_country(y_pred_epic_am, model = 'stat-EPIC')
+model_performance_test_country(y_pred_exclim_dyn_am, model = 'stat-Clim')
+model_performance_test_country(y_pred_hyb_am2, model = 'Hybrid')
+
+# =============================================================================
 # # Extreme case 2012 error
 # =============================================================================
 plot_2d_am_map(DS_y_epic_am_det_regul.sel(time=2012) - DS_y_obs_am_det_regul.sel(time=2012), colormap = 'RdBu', vmin = -1, vmax = 1, title = "a) EPIC-IIASA")
 plot_2d_am_map(DS_predict_epic_hist['Yield'].sel(time=2012) - DS_y_obs_am_det_regul.sel(time=2012), colormap = 'RdBu', vmin = -1, vmax = 1, title = "b) Stat-EPIC")
 plot_2d_am_map(DS_predict_clim_hist['Yield'].sel(time=2012) - DS_y_obs_am_det_regul.sel(time=2012), colormap = 'RdBu', vmin = -1, vmax = 1, title = "c) Stat-clim")
+
 
 DS_predict_test_hist_plot = DS_predict_test_hist.copy()
 DS_predict_test_hist_plot = DS_predict_test_hist_plot.rename({'Yield':'Yield (ton/ha)'})
@@ -1038,13 +1161,20 @@ DS_anomaly_2012 = ( DS_predict_test_hist_plot['Yield (ton/ha)'].sel(time=2012) -
 DS_anomaly_2012_globiom = ( DS_predict_test_hist['Yield'].sel(time=2012) / DS_predict_test_hist['Yield'].sel(time = slice(2000,2015)).mean('time') ) #/ DS_predict_test_hist_plot['Yield (ton/ha)'].sel(time = slice(2000,2015)).mean('time') 
 DS_anomaly_2012_globiom.to_netcdf('output_models_am/shifters_2012_hybrid_climatology.nc')
 
+DS_anomaly_bias_total = ( DS_predict_test_hist_plot['Yield (ton/ha)'] - DS_y_obs_am_det_regul ) #/ DS_y_obs_am_det_regul.sel(time=2012)
+
 plot_2d_am_map(DS_anomaly_bias, colormap = 'RdBu', vmin = -1, vmax = 1, title = "a) 2012 bias")
 plot_2d_am_map(DS_anomaly_2012, colormap = 'RdBu', vmin = -1, vmax = 1, title = "b) Simulation of 2012 anomaly")
+plot_2d_am_map(DS_anomaly_bias_total.mean('time'), colormap = 'RdBu', vmin = -1, vmax = 1, title = "Total historical bias")
 
 
-print('Sum of squared errors for EPIC case',(((DS_predict_epic_hist['Yield'].sel(time=2012) - DS_y_obs_am_det_regul.sel(time=2012))**2).sum()).values)
-print('Sum of squared errors for CLIM case',(((DS_predict_clim_hist['Yield'].sel(time=2012) - DS_y_obs_am_det_regul.sel(time=2012))**2).sum()).values)
-print('Sum of squared errors for Hybrid case',(((DS_predict_test_hist['Yield'].sel(time=2012) - DS_y_obs_am_det_regul.sel(time=2012))**2).sum()).values)
+print('Sum of squared errors for 2012 EPIC case',(((DS_predict_epic_hist['Yield'].sel(time=2012) - DS_y_obs_am_det_regul.sel(time=2012))**2).sum()).values)
+print('Sum of squared errors for 2012 CLIM case',(((DS_predict_clim_hist['Yield'].sel(time=2012) - DS_y_obs_am_det_regul.sel(time=2012))**2).sum()).values)
+print('Sum of squared errors for 2012 Hybrid case',(((DS_predict_test_hist['Yield'].sel(time=2012) - DS_y_obs_am_det_regul.sel(time=2012))**2).sum()).values)
+
+print('Sum of squared errors for history EPIC case',(((DS_predict_epic_hist['Yield'] - DS_y_obs_am_det_regul)**2).sum()).values)
+print('Sum of squared errors for history CLIM case',(((DS_predict_clim_hist['Yield'] - DS_y_obs_am_det_regul)**2).sum()).values)
+print('Sum of squared errors for history Hybrid case',(((DS_predict_test_hist['Yield'] - DS_y_obs_am_det_regul)**2).sum()).values)
 
 print('The Hybrid model shows',round(( ( (((DS_predict_test_hist['Yield'].sel(time=2012) - DS_y_obs_am_det_regul.sel(time=2012))**2).sum()).values -
                                         (((DS_predict_epic_hist['Yield'].sel(time=2012) - DS_y_obs_am_det_regul.sel(time=2012))**2).sum()).values ) / 
@@ -1112,6 +1242,11 @@ DS_produ_us = production(DS_y_obs_am_det_regul, DS_mirca_test.where(DS_y_obs_us_
 DS_produ_br = production(DS_y_obs_am_det_regul, DS_mirca_test.where(DS_y_obs_br['Yield'] > -1))
 DS_produ_arg = production(DS_y_obs_am_det_regul, DS_mirca_test.where(DS_y_obs_arg['Yield'] > -1))
 
+print('First results:')
+print('Overall loss of 2012 with respect to 2000:2015:', (DS_produ_am['Yield'].sel(time=2012)-DS_produ_am['Yield'].sel(time=slice(2000,2015)).mean('time')).values / 10**6)
+print('US loss of 2012 with respect to 2000:2015:', (DS_produ_us['Yield'].sel(time=2012)-DS_produ_us['Yield'].sel(time=slice(2000,2015)).mean('time')).values / 10**6)
+print('Brazil loss of 2012 with respect to 2000:2015:', (DS_produ_br['Yield'].sel(time=2012)-DS_produ_br['Yield'].sel(time=slice(2000,2015)).mean('time')).values / 10**6)
+print('Argentina loss of 2012 with respect to 2000:2015:', (DS_produ_arg['Yield'].sel(time=2012)-DS_produ_arg['Yield'].sel(time=slice(2000,2015)).mean('time')).values / 10**6)
 
 plt.plot(DS_produ_us.time, DS_produ_us['Yield'], label = 'US')
 plt.plot(DS_produ_br.time, DS_produ_br['Yield'], label = 'BR')
@@ -1126,7 +1261,18 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 
-
-
-
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 8), sharex=True, sharey=True) # marker='o'marker='^',marker='s',
+ax1.axhline(y = DS_produ_us['Yield'].sel(time = 2012).values, linestyle = 'dashed', color = 'k', label = '2012 event', linewidth = 2 )
+(DS_produ_us['Yield']).plot(ax = ax1, linewidth = 2 )
+ax1.set_title("a) US")
+ax1.set_ylabel('Production (Mt)')
+ax2.axhline(y = DS_produ_br['Yield'].sel(time = 2012).values, linestyle = 'dashed', color = 'k', label = '2012 event', linewidth = 2 )
+DS_produ_br['Yield'].plot(ax = ax2, linewidth = 2 )
+ax2.set_title("b) Brazil")
+ax3.axhline(y = DS_produ_arg['Yield'].sel(time = 2012).values, linestyle = 'dashed', color = 'k', label = '2012 event', linewidth = 2 )
+DS_produ_arg['Yield'].plot(ax = ax3, linewidth = 2 )
+ax3.set_title("a) Argentina")
+ax3.set_ylabel('')
+plt.tight_layout()
+plt.show()
 

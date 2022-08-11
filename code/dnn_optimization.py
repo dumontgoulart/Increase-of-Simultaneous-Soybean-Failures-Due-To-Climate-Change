@@ -4,94 +4,127 @@ Created on Mon Apr 18 15:05:38 2022
 
 @author: morenodu
 """
-
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error, explained_variance_score
+from sklearn.utils import shuffle
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from keras.layers import Activation
+from keras.layers import BatchNormalization
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+# from keras.callbacks import ModelCheckpoint
+from tensorflow.keras.layers import Dropout
+from scikeras.wrappers import KerasRegressor
+import lightgbm as lgb
+from tensorflow.keras import regularizers
 from sklearn.model_selection import GridSearchCV
 from keras.callbacks import ModelCheckpoint
-from tensorflow.keras import regularizers
 
 X_shuffle, y_shuffle = shuffle(X, y, random_state=0)
 
 X_train1, X_test1, y_train1, y_test1 = train_test_split(X_shuffle, y_shuffle, test_size=0.1, random_state=0, shuffle = False)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=0)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
 
 # Try increasing the size of the nodes
-batch_size = [1024,512,256]
-epochs = [800]
-neurons_list = [512,256,128] # Try 512, 256
-learn_rate = [0.001, 0.005, 0.01]
+extra_layers = [False, True]
+batch_size = [1024,512]
+epochs = [700]
+neurons_list = [256, 512] 
+learn_rate = [0.01, 0.001] # 0.005
 dropout_train = [0.2]
-
+regul_values = [0, 0.0000001]
 list_results = []
-for batch in batch_size:
-    for epoch in epochs: 
-        for neurons in neurons_list: 
-            for lr in learn_rate: 
-                for dropout_value in dropout_train:
-                    #model
-                    test_model = Sequential()
-                    test_model.add(Dense(neurons, input_dim=len(X.columns))) 
-                    test_model.add(BatchNormalization())
-                    test_model.add(Activation('relu'))
-                    test_model.add(Dropout(dropout_value))
-    
-                    test_model.add(Dense(neurons))
-                    test_model.add(BatchNormalization())
-                    test_model.add(Activation('relu'))
-                    test_model.add(Dropout(dropout_value))
-    
-                    test_model.add(Dense(neurons))
-                    test_model.add(BatchNormalization())
-                    test_model.add(Activation('relu'))
-                    test_model.add(Dropout(dropout_value))
-    
-                    test_model.add(Dense(neurons))
-                    test_model.add(BatchNormalization())
-                    test_model.add(Activation('relu'))
-                    test_model.add(Dropout(dropout_value))
-    
-                    test_model.add(Dense(neurons))
-                    test_model.add(BatchNormalization())
-                    test_model.add(Activation('relu'))
-                    test_model.add(Dropout(dropout_value))
-    
-                    test_model.add(Dense(1, activation='linear'))
-                    
-                    # compile the keras model
-                    test_model.compile(loss='mse', optimizer=tf.keras.optimizers.Adam(learning_rate = lr), metrics=['mean_squared_error','mean_absolute_error'])
-                    callback_model = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience= 80, restore_best_weights=True)
-                    # mc = ModelCheckpoint('best_model_test_dnn2.model', monitor='val_loss', mode='min', save_best_only=True, verbose=0)
-                    scikeras_regressor = Pipeline([
-                        ('scaler', StandardScaler()),
-                        ('estimator', KerasRegressor(model=test_model, batch_size = batch, epochs = epoch, validation_split= 0.1, random_state = 0, verbose=0, callbacks=[callback_model])) # validation_split= 0.1, callbacks=[callback_model_full, mc_full]
-                    ])
-               
-                    scikeras_regressor.fit(X_shuffle, y_shuffle)
-                    
-                    plt.figure(figsize=(16,8), dpi=250) #plot clusters
-                    plt.plot(scikeras_regressor['estimator'].history_['loss'])
-                    plt.plot(scikeras_regressor['estimator'].history_['val_loss'])
-                    plt.title(f'batch: {batch} and epoch: {epoch} and neurons: {neurons} and learning rate : {lr}, dropout: {dropout_value}')
-                    plt.ylabel('loss')
-                    plt.xlabel('epoch')
-                    plt.ylim(0, 0.2)
-                    plt.legend(['train', 'test'], loc='upper left')
-                    plt.show()
-                    
-                    best_epoch = np.argmin(scikeras_regressor['estimator'].history_['val_loss']) + 1
-                    # Test performance
-                    y_pred = scikeras_regressor.predict(X_test1)
-                    
-                    # report performance
-                    print(f'Results for model: batch: {batch} and epoch: {epoch} and neurons: {neurons} and learning rate : {lr}, dropout: {dropout_value}')
-                    print('Best epoch:', best_epoch )
-                    print("R2 on test set:", round(r2_score(y_test1, y_pred),2))
-                    print("Var score on test set:", round(explained_variance_score(y_test1, y_pred),2))
-                    print("MAE on test set:", round(mean_absolute_error(y_test1, y_pred),5))
-                    print("RMSE on test set:",round(mean_squared_error(y_test1, y_pred, squared=False),5))
-                    list_results.append([batch, epoch, neurons, lr,dropout_value,best_epoch, round(r2_score(y_test1, y_pred),3),round(mean_absolute_error(y_test1, y_pred),5),round(mean_squared_error(y_test1, y_pred, squared=False),5) ])
+for extra_layer in extra_layers:
+    for batch in batch_size:
+        for epoch in epochs: 
+            for neurons in neurons_list: 
+                for lr in learn_rate: 
+                    for dropout_value in dropout_train:
+                        for regul_value in regul_values:
+                            #model
+                            test_model = Sequential()
+                            test_model.add(Dense(neurons, kernel_initializer="he_normal", input_dim=len(X_train.columns), kernel_regularizer=regularizers.l2(regul_value))) 
+                            test_model.add(BatchNormalization())
+                            test_model.add(Activation('relu'))
+                            test_model.add(Dropout(dropout_value))
+            
+                            test_model.add(Dense(neurons, kernel_initializer="he_normal", kernel_regularizer=regularizers.l2(regul_value)))
+                            test_model.add(BatchNormalization())
+                            test_model.add(Activation('relu'))
+                            test_model.add(Dropout(dropout_value))
+            
+                            test_model.add(Dense(neurons, kernel_initializer="he_normal", kernel_regularizer=regularizers.l2(regul_value)))
+                            test_model.add(BatchNormalization())
+                            test_model.add(Activation('relu'))
+                            test_model.add(Dropout(dropout_value))
+            
+                            test_model.add(Dense(neurons, kernel_initializer="he_normal", kernel_regularizer=regularizers.l2(regul_value)))
+                            test_model.add(BatchNormalization())
+                            test_model.add(Activation('relu'))
+                            test_model.add(Dropout(dropout_value))
+                            
+                            if extra_layer == True:
+            
+                                test_model.add(Dense(neurons, kernel_initializer="he_normal", kernel_regularizer=regularizers.l2(regul_value)))
+                                test_model.add(BatchNormalization())
+                                test_model.add(Activation('relu'))
+                                test_model.add(Dropout(dropout_value))
+            
+                            test_model.add(Dense(1, activation='linear'))
+                            
+                            # compile the keras model
+                            test_model.compile(loss='mse', optimizer=tf.keras.optimizers.Adam(learning_rate = lr), metrics=['mean_squared_error','mean_absolute_error'])
+                            callback_model = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience= 60, restore_best_weights=True)
+                            # mc = ModelCheckpoint('best_model_test_dnn2.model', monitor='val_loss', mode='min', save_best_only=True, verbose=0)
+                            scikeras_regressor = Pipeline([
+                                ('scaler', StandardScaler()),
+                                ('estimator', KerasRegressor(model=test_model, batch_size = batch, epochs = epoch, validation_split = 0.2, random_state = 0, verbose=0, callbacks=[callback_model])) # validation_split= 0.1, callbacks=[callback_model_full, mc_full]
+                            ])
+                       
+                            scikeras_regressor.fit(X_shuffle, y_shuffle)
+                            
+                            plt.figure(figsize=(16,8), dpi=250) #plot clusters
+                            plt.plot(scikeras_regressor['estimator'].history_['loss'])
+                            plt.plot(scikeras_regressor['estimator'].history_['val_loss'])
+                            plt.title(f'extra_layer: {extra_layer}, batch: {batch}, neurons: {neurons}, learning rate : {lr}, dropout: {dropout_value}')
+                            plt.ylabel('loss')
+                            plt.xlabel('epoch')
+                            plt.ylim(0, 0.2)
+                            plt.legend(['train', 'test'], loc='upper left')
+                            plt.show()
+                            
+                            best_epoch = np.argmin(scikeras_regressor['estimator'].history_['val_loss']) + 1
+                            # Test performance
+                            y_pred = scikeras_regressor.predict(X_test1)
+                            
+                            # Display error
+                            plt.figure(figsize=(5,5), dpi=250) #plot clusters
+                            plt.scatter(y_test1, y_pred)
+                            plt.plot(y_test1, y_test1, color = 'black', label = '1:1 line')
+                            plt.ylabel('Predicted yield')
+                            plt.xlabel('Observed yield')
+                            plt.title('Scatter plot - test set')
+                            plt.legend()
+                            # plt.savefig('paper_figures/???.png', format='png', dpi=500)
+                            plt.show()
+                            
+                            # report performance
+                            print(f'Results for model: extra_layer: {extra_layer}, batch: {batch}, epoch: {epoch}, neurons: {neurons}, learning rate : {lr}, dropout: {dropout_value}, regul: {regul_value}')
+                            print('Best epoch:', best_epoch )
+                            print("R2 on test set:", round(r2_score(y_test1, y_pred),2))
+                            print("Var score on test set:", round(explained_variance_score(y_test1, y_pred),2))
+                            print("MAE on test set:", round(mean_absolute_error(y_test1, y_pred),5))
+                            print("RMSE on test set:",round(mean_squared_error(y_test1, y_pred, squared=False),5))
+                            list_results.append([extra_layer, batch, epoch, neurons, lr,dropout_value, regul_value, best_epoch, round(r2_score(y_test1, y_pred),3),round(mean_absolute_error(y_test1, y_pred),5),round(mean_squared_error(y_test1, y_pred, squared=False),5) ])
 
-df_results_config = pd.DataFrame(list_results, columns = ['batch', 'epoch', 'nodes', 'lr','dropout_value','best_epoch','R2', 'MAE', 'RMSE'])
+df_results_config = pd.DataFrame(list_results, columns = ['extra layer', 'batch', 'epoch', 'nodes', 'lr','dropout_value', 'regul_value', 'best_epoch','R2', 'MAE', 'RMSE'])
 df_results_config.to_csv('results_hyperparameter_dnn.csv')
 
 

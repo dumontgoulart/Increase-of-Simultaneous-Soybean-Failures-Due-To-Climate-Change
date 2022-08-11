@@ -510,8 +510,6 @@ DS_mirca_us_hist = DS_harvest_area_sim.where(DS_historical_hybrid_us['Yield'] > 
 DS_mirca_br_hist = DS_harvest_area_sim.where(DS_historical_hybrid_br['Yield'] > -10)
 DS_mirca_arg_hist = DS_harvest_area_sim.where(DS_historical_hybrid_arg['Yield'] > -10)
 
-plot_2d_am_map(DS_historical_hybrid_us.Yield.sel(time=1999))
-
 # Determine country level yields for future projections
 DS_counterfactual_us = DS_counterfactuals_spatial.where(DS_historical_hybrid_us['Yield'].sel(time = 2012) > -10)
 DS_mirca_us = DS_harvest_area_fut.where(DS_historical_hybrid_us['Yield'].sel(time = 2012) > -10)
@@ -522,9 +520,6 @@ DS_mirca_br = DS_harvest_area_fut.where(DS_historical_hybrid_br['Yield'].sel(tim
 DS_counterfactual_arg = DS_counterfactuals_spatial.where(DS_historical_hybrid_arg['Yield'].sel(time = 2012) > -10)
 DS_mirca_arg = DS_harvest_area_fut.where(DS_historical_hybrid_arg['Yield'].sel(time = 2012) > -10)
 
-plot_2d_am_map(DS_counterfactual_us['UKESM1-0-ll_5-8.5'].sel(time=2042))
-plot_2d_am_map(DS_counterfactual_br['UKESM1-0-ll_5-8.5'].sel(time=2042))
-plot_2d_am_map(DS_counterfactual_arg['UKESM1-0-ll_5-8.5'].sel(time=2042))
 plot_2d_am_map(DS_mirca_arg.harvest_area)
 
 # Weighted analysis historical
@@ -799,6 +794,55 @@ fig.legend(handles, labels, loc=[0.1,-0.001], ncol=4, frameon=False )
 plt.tight_layout()
 plt.savefig('paper_figures/co_occurrence.png', format='png', dpi=500)
 plt.show()
+
+#%%
+
+def figure_timeseries_per_country(DS_timeseries):
+    DS_hybrid_trend_us_weighted = weighted_conversion(DS_timeseries, DS_area = DS_mirca_us)
+    DS_hybrid_trend_br_weighted = weighted_conversion(DS_timeseries, DS_area = DS_mirca_br)
+    DS_hybrid_trend_arg_weighted = weighted_conversion(DS_timeseries, DS_area = DS_mirca_arg)
+    
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 8), sharex=True, sharey=True) # marker='o'marker='^',marker='s',
+    ax1.axhline(y = DS_historical_hybrid_us_weight['Yield'].sel(time = 2012).values, linestyle = 'dashed', color = 'k', label = '2012 event', linewidth = 2 )
+    DS_hybrid_trend_us_weighted['GFDL-esm4_1-2.6'].plot(color='tab:blue',marker='o', ax = ax1, linewidth = 2 )
+    DS_hybrid_trend_us_weighted['GFDL-esm4_5-8.5'].plot( color='tab:orange',marker='o', ax = ax1, linewidth = 2 )
+    DS_hybrid_trend_us_weighted['IPSL-cm6a-lr_1-2.6'].plot( color='tab:blue', marker='^',ax = ax1, linewidth = 2 )
+    DS_hybrid_trend_us_weighted['IPSL-cm6a-lr_5-8.5'].plot( marker='^', color='tab:orange', ax = ax1, linewidth = 2 )
+    DS_hybrid_trend_us_weighted['UKESM1-0-ll_1-2.6'].plot( color='tab:blue',marker='s', ax = ax1, linewidth = 2 )
+    DS_hybrid_trend_us_weighted['UKESM1-0-ll_5-8.5'].plot( marker='s', color='tab:orange', ax = ax1, linewidth = 2 )
+    ax1.set_title("a) US")
+    ax1.set_ylabel('Production (Mt)')
+    
+    # ax1.legend()
+    ax2.axhline(y = DS_historical_hybrid_br_weight['Yield'].sel(time = 2012).values, linestyle = 'dashed', color = 'k', label = '2012 event', linewidth = 2 )
+    DS_hybrid_trend_br_weighted['GFDL-esm4_1-2.6'].plot(color='tab:blue',marker='o', ax = ax2, linewidth = 2 )
+    DS_hybrid_trend_br_weighted['GFDL-esm4_5-8.5'].plot( color='tab:orange',marker='o', ax = ax2, linewidth = 2 )
+    DS_hybrid_trend_br_weighted['IPSL-cm6a-lr_1-2.6'].plot( color='tab:blue', marker='^',ax = ax2, linewidth = 2 )
+    DS_hybrid_trend_br_weighted['IPSL-cm6a-lr_5-8.5'].plot( marker='^', color='tab:orange', ax = ax2, linewidth = 2 )
+    DS_hybrid_trend_br_weighted['UKESM1-0-ll_1-2.6'].plot( color='tab:blue',marker='s', ax = ax2, linewidth = 2 )
+    DS_hybrid_trend_br_weighted['UKESM1-0-ll_5-8.5'].plot( marker='s', color='tab:orange', ax = ax2, linewidth = 2 )
+    ax2.set_title("b) Brazil")
+    
+    lines = ax2.get_lines()
+    legend1 = ax2.legend([dummy_lines[i] for i in range(0,6)], ["2012 event", "SSP1-2.6", "SSP5-8.5","GFDL-esm4", "IPSL-cm6a-lr", "UKESM1-0-ll"], frameon = False,loc = 3, ncol=2)
+    # legend2 = ax2.legend([dummy_lines2[i] for i in [0,1,2]], ["GFDL-esm4", "IPSL-cm6a-lr", "UKESM1-0-ll"], frameon = False,loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3)
+    ax2.set_ylabel('')
+    
+    ax3.axhline(y = DS_historical_hybrid_arg_weight['Yield'].sel(time = 2012).values, linestyle = 'dashed', color = 'k', label = '2012 event', linewidth = 2 )
+    DS_hybrid_trend_arg_weighted['GFDL-esm4_1-2.6'].plot(color='tab:blue',marker='o', ax = ax3, linewidth = 2 )
+    DS_hybrid_trend_arg_weighted['GFDL-esm4_5-8.5'].plot( color='tab:orange',marker='o', ax = ax3, linewidth = 2 )
+    DS_hybrid_trend_arg_weighted['IPSL-cm6a-lr_1-2.6'].plot( color='tab:blue', marker='^',ax = ax3, linewidth = 2 )
+    DS_hybrid_trend_arg_weighted['IPSL-cm6a-lr_5-8.5'].plot( marker='^', color='tab:orange', ax = ax3, linewidth = 2 )
+    DS_hybrid_trend_arg_weighted['UKESM1-0-ll_1-2.6'].plot( color='tab:blue',marker='s', ax = ax3, linewidth = 2 )
+    DS_hybrid_trend_arg_weighted['UKESM1-0-ll_5-8.5'].plot( marker='s', color='tab:orange', ax = ax3, linewidth = 2 )
+    ax3.set_title("a) Argentina")
+    ax3.set_ylabel('')
+    plt.tight_layout()
+    plt.show()
+
+figure_timeseries_per_country(DS_hybrid_trend_all)
+figure_timeseries_per_country(DS_hybrid_all)
+
 
 
 #%% Yield - Climate interaction

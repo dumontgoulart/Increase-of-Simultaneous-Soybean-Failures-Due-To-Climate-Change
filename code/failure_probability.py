@@ -15,7 +15,7 @@ from sklearn.model_selection import cross_val_score, cross_validate,RepeatedStra
 
 #%% Start function
 
-def feature_importance_selection(df_climate, df_y, show_scatter = True, feat_sel = False):
+def feature_importance_selection(df_climate, df_y, show_scatter = True, feat_sel = False, binary = False):
 
     #%% fit linear regressions and plot them compared with the scatter plots and the respective R2 score:
     if show_scatter == True:    
@@ -52,9 +52,12 @@ def feature_importance_selection(df_climate, df_y, show_scatter = True, feat_sel
     
     #%% data input, output, train and test for classification
     #define failure
-    # df_net =pd.DataFrame( np.where(df_y < -0,True, False), index = df_y.index,columns = ['net_loss'] ).astype(int)
-    loss_intensity = pd.DataFrame( np.where(df_y < df_y.mean() - df_y.std(),True, False), 
+    # df_net = pd.DataFrame( np.where(df_y < -0,True, False), index = df_y.index,columns = ['net_loss'] ).astype(int)
+    if binary == False:
+        loss_intensity = pd.DataFrame( np.where(df_y < (df_y.mean() - df_y.std()), True, False), 
                              index = df_y.index, columns = ['severe_loss'] ).astype(int)
+    elif binary == True:
+        loss_intensity = df_y
     
     X, y = df_input_scaled, loss_intensity
     #divide data train and test
@@ -141,7 +144,6 @@ def feature_importance_selection(df_climate, df_y, show_scatter = True, feat_sel
     #%% random forest feature selection
     from sklearn.ensemble import RandomForestRegressor
     from sklearn.tree import DecisionTreeClassifier
-    import shap
     rfc = RandomForestRegressor(n_estimators=600, random_state=0, n_jobs=-1, max_depth = 10)
     
     # fit the model
@@ -180,7 +182,7 @@ def feature_importance_selection(df_climate, df_y, show_scatter = True, feat_sel
          r = r_multi[metric]
          for i in r.importances_mean.argsort()[::-1]:
              if r.importances_mean[i] - 2 * r.importances_std[i] > 0:
-                 print(f"    {X.columns[i]:<8}"
+                 print(f"    {X.columns[i]:<8} "
                        f"{r.importances_mean[i]:.3f}"
                        f" +/- {r.importances_std[i]:.3f}")
              
