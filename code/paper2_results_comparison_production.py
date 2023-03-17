@@ -491,6 +491,7 @@ for name in ['prcptot', 'txm']: #, ax in zip(names, axes.flatten()):
             
     ax.hlines(y=df_climatology_grouped[name], xmin=df_climatology_grouped['month']-1.5, xmax=df_climatology_grouped['month']-0.5, colors='firebrick', linestyles='--', lw=2, label = '2012 event')
     g1 = sns.boxplot(ax = ax, x="month", y=name, data=df_analogues_grouped, palette = ['tab:orange'], hue = 'scenario') #drawstyle = 'steps-mid', err_kws= {'step':'mid'}
+    g1 = sns.swarmplot(ax = ax, x="month", y=name, data=df_analogues_grouped, palette = ['firebrick'], size = 10, alpha=0.5, hue = 'scenario') #drawstyle = 'steps-mid', err_kws= {'step':'mid'}
     # g1.set(xticklabels=[])  # remove the tick labels
     # g1.set(xlabel= '')
     g1.set(ylabel= '' )
@@ -504,7 +505,7 @@ axes[1].set_ylabel('Temperature anomaly (°C)')
 axes[1].set_title("b) Temperature",loc='left')
 
 handles, labels = ax.get_legend_handles_labels()
-fig.legend(handles, labels, bbox_to_anchor=(0.8, 0.01), ncol=3, frameon=False)
+fig.legend(handles[:2], labels[:2], bbox_to_anchor=(0.8, 0.01), ncol=3, frameon=False)
 plt.tight_layout()
 plt.savefig('paper_figures_production/clim_conditions_grouped_2012.png', format='png', dpi=300, bbox_inches='tight')
 plt.show()
@@ -1393,6 +1394,7 @@ for country in test_long.index.get_level_values(level = 'country').unique():
                 
         ax.hlines(y=data_country_climatology.query('year == 2012')[name], xmin=data_country_climatology.query('year == 2012')['month']-1.5, xmax=data_country_climatology.query('year == 2012')['month']-0.5, colors='firebrick', linestyles='--', lw=2, label = '2012 event')
         g1 = sns.boxplot(ax = ax, x="month", y=name, data=data_country, hue = 'level', palette=['tab:orange']) #drawstyle = 'steps-mid', err_kws= {'step':'mid'}
+        # g1 = sns.swarmplot(ax = ax, x="month", y=name, data=data_country, hue = 'level', palette=['firebrick']) #drawstyle = 'steps-mid', err_kws= {'step':'mid'}
         g1.set(ylabel= '' )
         ax.get_legend().remove()
 

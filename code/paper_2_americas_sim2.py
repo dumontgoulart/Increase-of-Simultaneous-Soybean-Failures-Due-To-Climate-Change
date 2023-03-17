@@ -19,6 +19,8 @@ import cartopy
 import cartopy.crs as ccrs
 import cartopy.io.shapereader as shpreader
 import matplotlib as mpl
+import rasterio
+from rasterio.features import geometry_mask     
 
 mpl.rcParams['axes.spines.right'] = False
 mpl.rcParams['axes.spines.top'] = False
@@ -186,27 +188,62 @@ def weighted_conversion(DS, DS_area, name_ds = 'Yield'):
         DS_weighted = ((DS * DS_area['harvest_area'].where(DS > -10) / DS_area['harvest_area'].where(DS > -10).sum(['lat','lon'])))
     return DS_weighted.sum(['lat','lon'])
 
+
+# List of countries
+countries = shpreader.natural_earth(resolution='50m',category='cultural',name='admin_0_countries')
+gdf = gpd.read_file(countries)
+import odc.geo.xr
+
+def country_sel(da, country = 'USA'):
+    if type(country) == str:
+        country = [country]
+    gdf_country = gdf[gdf['ADM0_A3'].isin(country)]
+
+    # Convert the polygon to a shapely object
+    polygon = gdf_country.geometry.unary_union
+
+    # Create a mask of the polygon bounds
+    mask = geometry_mask([polygon], transform=da.odc.geobox.transform,
+                         out_shape=da.odc.geobox.shape,
+                         all_touched=False, invert=True)
+
+    # Use the mask to extract the data within the bounds of the polygon
+    da_subset = da.where(mask)    
+    return da_subset
+
 #%% LOADING MAIN DATA
 # Load Country shapes
-us1_shapes = states_mask('../../Paper_drought/data/gadm36_USA_1.shp')
-br1_shapes = states_mask('../../Paper_drought/data/gadm36_BRA_1.shp')
-arg_shapes = states_mask('GIS/gadm36_ARG_1.shp')
+us1_shapes = states_mask('../../Paper_hybrid_agri/data/countries_shapefiles/gadm36_USA_1.shp')
+br1_shapes = states_mask('../../Paper_hybrid_agri/data/countries_shapefiles/gadm36_BRA_1.shp')
+arg_shapes = states_mask('../../Paper_hybrid_agri/data/countries_shapefiles/gadm36_ARG_1.shp')
 
 # =============================================================================
-# USe MIRCA to isolate the rainfed 90% soybeans
+    # Use SPAM2010 to isolate the soybean grid cells where rainfed soybean is > 0
 # =============================================================================
 # DS_mirca_test = xr.open_dataset("../../paper_hybrid_agri/data/americas_mask_ha.nc", decode_times=False).rename({'latitude': 'lat', 'longitude': 'lon','annual_area_harvested_rfc_crop08_ha_30mn':'harvest_area'})
 DS_mirca_test = xr.open_dataset("../../paper_hybrid_agri/data/soy_harvest_spam_native_05x05.nc", decode_times=False)
 plot_2d_am_map(DS_mirca_test['harvest_area'])
 
 #### HARVEST DATA
-DS_harvest_area_sim = xr.load_dataset("../../paper_hybrid_agri/data/soybean_harvest_area_calculated_americas_hg.nc", decode_times=False)
-DS_harvest_area_sim = DS_harvest_area_sim.sel(time=2012) 
-DS_harvest_area_sim = DS_harvest_area_sim.where(DS_mirca_test['harvest_area'] > 0 )
+DS_harvest_area_total = xr.load_dataset("../../paper_hybrid_agri/data/soybean_harvest_area_calculated_americas_hg.nc", decode_times=False)
+DS_harvest_area_total2012 = DS_harvest_area_total.sel(time=2012) 
+plot_2d_am_map(DS_harvest_area_total2012['harvest_area'])
+
+DS_harvest_area_sim = DS_harvest_area_total2012.where(DS_mirca_test['harvest_area'] > 0 )
 DS_harvest_area_sim = rearrange_latlot(DS_harvest_area_sim)
 DS_mirca_test = DS_harvest_area_sim
 plot_2d_am_map(DS_mirca_test['harvest_area'])
 # plot_2d_am_map(DS_harvest_area_sim['harvest_area'])
+
+print('fraction of rainfed areas from total:', DS_harvest_area_sim['harvest_area'].sum().values/DS_harvest_area_total2012['harvest_area'].sum().values)
+
+def rainfed_ratio(DS_y_mask):
+    test_rf = DS_harvest_area_sim['harvest_area'].where(DS_y_mask['Yield'] > -10)
+    test_total = DS_harvest_area_total2012['harvest_area'].where(DS_y_mask['Yield'] > -10)
+    print('fraction of rainfed areas from total:', test_rf.sum().values/test_total.sum().values)
+    
+    plot_2d_am_map(test_rf)
+    plot_2d_am_map(test_total)
 
 # =============================================================================
 # GLOBAL - EPIC 
@@ -219,7 +256,8 @@ DS_y_epic['time'] = DS_y_epic['time'].dt.year
 DS_y_epic = DS_y_epic.sel(time=slice('1972-12-12','2016-12-12'))
 DS_y_epic = DS_y_epic.rename({'yield-soy-noirr':'yield'})
 
-DS_y_epic_am = DS_y_epic.where(DS_mirca_test['harvest_area'] > 0 )
+DS_y_epic_am = country_sel(DS_y_epic, country = ['USA','BRA','ARG'])
+# DS_y_epic_am = DS_y_epic.where(DS_mirca_test['harvest_area'] > 0 )
 plot_2d_am_map(DS_y_epic_am['yield'].isel(time=0))
 plot_2d_am_map(DS_y_epic_am['yield'].sel(time=2016))
 # remove weird data point on north of brazil that seems to be off-calendar
@@ -227,6 +265,12 @@ DS_epic_2016_south = DS_y_epic_am.sel(time = 2016).where(DS_y_epic_am.sel(time =
 DS_y_epic_am = xr.where(DS_epic_2016_south['yield'] > -100, np.nan, DS_y_epic_am)
 DS_y_epic_am['yield'] = DS_y_epic_am['yield'].transpose('time','lat','lon')
 DS_y_epic_am = rearrange_latlot(DS_y_epic_am)
+
+DS_y_epic_us = country_sel(DS_y_epic_am, country = 'USA')
+DS_y_epic_br = country_sel(DS_y_epic_am, country = 'BRA')
+DS_y_epic_arg = country_sel(DS_y_epic_am, country = 'ARG')
+
+
 
 # =============================================================================
 # OBSERVED CENSUS DATA
@@ -237,44 +281,53 @@ DS_y_obs_us_all = xr.open_dataset("../../paper_hybrid_agri/data/soy_yields_US_al
 # Convert time unit --- # units, reference_date = DS_y_obs_us_all.time.attrs['units'].split('since') #pd.date_range(start=reference_date, periods=DS_y_obs_us_all.sizes['time'], freq='YS').year
 DS_y_obs_us_all['time'] = DS_y_obs_us_all['time'].astype(int) 
 DS_y_obs_us_all = DS_y_obs_us_all.sel(time=slice(start_date, end_date))
+DS_y_obs_us_2012 = DS_y_obs_us_all.sel(time = 2012)
 
 DS_y_obs_us_all = DS_y_obs_us_all.where(DS_mirca_test['harvest_area'] > 0 )
 DS_y_obs_us_all.to_netcdf("soybean_yields_US_1978_2016.nc")
 plot_2d_am_map(DS_y_obs_us_all['Yield'].mean('time'))
 
-DS_y_epic_us = DS_y_epic_am.where(DS_y_obs_us_all['Yield'] > - 5)
+# DS_y_epic_us = DS_y_epic_am.where(DS_y_obs_us_all['Yield'] > - 5)
 
 # =============================================================================
 # # BRAZIL --------------------------------------------------------
 # =============================================================================
 DS_y_obs_br = xr.open_dataset("../../paper_hybrid_agri/data/soy_yield_1975_2016_05x05_1prc.nc", decode_times=False) 
 DS_y_obs_br=DS_y_obs_br.sel(time = slice(start_date, end_date))
+DS_y_obs_br_2012 = DS_y_obs_br.sel(time = 2012)
 DS_y_obs_br = DS_y_obs_br.where(DS_mirca_test['harvest_area'] > 0 )
 plot_2d_am_map(DS_y_obs_br['Yield'].mean('time'))
 
 DS_y_obs_br.to_netcdf("soybean_yields_BR_1978_2016.nc")
 
 # SHIFT EPIC FOR BRAZIL ONE YEAR FORWARD TO MATCH INTERNATIONAL CALENDARS
-DS_y_epic_br = DS_y_epic_am.where(DS_y_obs_br['Yield'].mean('time') > - 5)
+# DS_y_epic_br = DS_y_epic_am.where(DS_y_obs_br['Yield'].mean('time') > - 5)
 DS_y_epic_br = DS_y_epic_br.copy().shift(time = 1) # SHIFT EPIC BR ONE YEAR FORWARD
-DS_y_epic_br = DS_y_epic_br.where(DS_y_obs_br['Yield'] > - 5)
+# DS_y_epic_br = DS_y_epic_br.where(DS_y_obs_br['Yield'] > - 5)
 # plot_2d_am_map(DS_y_epic_br['yield'].sel(time=1979))
 
 # =============================================================================
 # # AREGNTINA --------------------------------------------------------
 # =============================================================================
 DS_y_obs_arg = xr.open_dataset("../../paper_hybrid_agri/data/soy_yield_arg_1974_2019_05x05.nc", decode_times=False)#soy_yield_1980_2016_1prc05x05 / soy_yield_1980_2016_all_filters05x05
-DS_y_obs_arg=DS_y_obs_arg.sel(time = slice(start_date-1, end_date)) # get one year earlier to shift them forward
+DS_y_obs_arg = DS_y_obs_arg.sel(time = slice(start_date-1, end_date)) # get one year earlier to shift them forward
 
 # SHIFT OBSERVED DATA FOR ARGENTINA ONE YEAR FORWARD TO MATCH INTERNATIONAL CALENDARS - from planting year to harvest year
 DS_y_obs_arg = DS_y_obs_arg.copy().shift(time = 1) # SHIFT AGRNEITNA ONE YeAR FORWARD
+DS_y_obs_arg_2012 = DS_y_obs_arg.sel(time = 2012)
+
 DS_y_obs_arg = DS_y_obs_arg.where(DS_mirca_test['harvest_area'] > 0 ).sel(time=slice(start_date, end_date))
 DS_y_obs_arg.to_netcdf("soybean_yields_ARG_1978_2016.nc")
 
 # SHIFT EPIC DATA FOR ARGENTINA ONE YEAR FORWARD TO MATCH INTERNATIONAL CALENDARS
-DS_y_epic_arg = DS_y_epic_am.where(DS_y_obs_arg['Yield'].mean('time') > - 5)
+# DS_y_epic_arg = DS_y_epic_am.where(DS_y_obs_arg['Yield'].mean('time') > - 5)
 DS_y_epic_arg = DS_y_epic_arg.copy().shift(time = 1) # SHIFT EPIC ARG ONE YeAR FORWARD
-DS_y_epic_arg = DS_y_epic_arg.where(DS_y_obs_arg['Yield'] > - 5)
+# DS_y_epic_arg = DS_y_epic_arg.where(DS_y_obs_arg['Yield'] > - 5)
+
+# Calculate the amount of rainfed regions left from the total
+rainfed_ratio(DS_y_obs_us_2012)
+rainfed_ratio(DS_y_obs_br_2012)
+rainfed_ratio(DS_y_obs_arg_2012)
 
 # =============================================================================
 # # Plots for analysis
@@ -333,7 +386,12 @@ start_date_det, end_date_det = start_date, end_date
 # Detrend timeseries
 DS_y_obs_am_det = xr.DataArray( detrend_dim(DS_y_obs_am_clip['Yield'], 'time') + DS_y_obs_am_clip['Yield'].mean('time'), name= DS_y_obs_am_clip['Yield'].name, attrs = DS_y_obs_am_clip['Yield'].attrs)
 DS_y_obs_am_det = DS_y_obs_am_det.sel(time = slice(start_date_det, end_date_det))
+# Save files
 DS_y_obs_am_det.to_netcdf("soybean_yields_america_detrended_1978_2016.nc")
+DS_y_obs_am_det.sel(time = 2012).to_netcdf("soybean_yields_america_detrended_2012.nc")
+
+DS_harvest_area_2012 = DS_harvest_area_sim.where(DS_y_obs_am_det.sel(time = 2012) > -10) 
+DS_harvest_area_2012.to_netcdf("soybean_harvested_area_america_2012.nc")
 
 DS_y_epic_am_det = xr.DataArray( detrend_dim(DS_y_epic_am_clip["yield"], 'time') + DS_y_epic_am_clip["yield"].mean('time'), name= DS_y_epic_am_clip["yield"].name, attrs = DS_y_epic_am_clip["yield"].attrs)
 DS_y_epic_am_det = DS_y_epic_am_det.sel(time = slice(start_date_det, end_date_det))
@@ -439,12 +497,7 @@ def calibration(X_origin,y_origin,type_of_model='RF', test_year = None):
         ])
     
     elif type_of_model == 'DNN':
-#     	extra layer	batch	epoch	nodes	lr	dropout_value	best_epoch	R2	MAE	RMSE
-#   31	True	          256	700	512	0.01	0.2	514	0.651	0.24641	0.34128
-#   1	False	     1024	700	512	0.01	0.2	564	0.648	0.24794	0.34267
-#   30	True	          256	700	512	0.005	0.2	635	0.648	0.24502	0.34266
-# number of epochs 529 or 431
-        epochs_train = 441 #390
+        epochs_train = 441 
         batch_size_train = 1024
         nodes_size = 512
         learning_rate_train = 0.01
@@ -485,10 +538,6 @@ def calibration(X_origin,y_origin,type_of_model='RF', test_year = None):
             # compile the keras model
             train_model.compile(loss='mse', optimizer=tf.keras.optimizers.Adam(learning_rate_train), metrics=['mean_squared_error','mean_absolute_error'])
             return train_model
-        
-        # Callbacks to monitor the performance of the optimization of the model and if there is any overfitting
-        # callback_model = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience= 100, restore_best_weights=True)
-        # mc = ModelCheckpoint('best_model_test.h5', monitor='val_loss', mode='min', save_best_only=True, verbose=1)
         
         model_rf = Pipeline([
             ('scaler', StandardScaler()),
@@ -606,6 +655,12 @@ DS_exclim_arg = DS_exclim_arg.shift(time = 12)
 # COMBINE
 DS_exclim_am = DS_exclim_us.combine_first(DS_exclim_arg)
 DS_exclim_am = DS_exclim_am.combine_first(DS_exclim_br)
+
+# FOR ESTHER
+ds_harvest_area_2050 = xr.open_dataset("output_shocks_am/scenarios_forum/soy_harvest_area_globiom_2050.nc", decode_times=False)
+ds_harvest_area_2050 = ds_harvest_area_2050.isel(lat=slice(None, None, -1))
+DS_exclim_am_mask = DS_exclim_am.where(ds_harvest_area_2050['area'] > -10)
+
 DS_exclim_am = DS_exclim_am.where(DS_y_obs_am_det.mean('time') > -10)
 DS_exclim_am = rearrange_latlot(DS_exclim_am)
 
@@ -819,7 +874,7 @@ feature_importance_selection(df_feature_season_6mon_am, df_obs_am_det_clip['Yiel
 print('Dynamic ECE results:') 
 df_feature_season_6mon_am_countryloc = country_location_add(df_feature_season_6mon_am)
 X, y = df_feature_season_6mon_am_countryloc, df_obs_am_det_clip['Yield']
-y_pred_exclim_dyn_am, y_pred_total_exclim_dyn_am, model_exclim_dyn_am, full_model_exclim_dyn_am = calibration(X, y, type_of_model='DNN')
+y_pred_exclim_dyn_am, y_pred_total_exclim_dyn_am, model_exclim_dyn_am, full_model_exclim_dyn_am = calibration(X, y, type_of_model='RF')
 y_pred_exclim_dyn_am_2012, y_pred_total_exclim_dyn_am_2012, model_exclim_dyn_am_2012, full_model_exclim_dyn_am_2012 = calibration(X, y, type_of_model='RF',test_year = 2012)
 
 # # =============================================================================
@@ -875,7 +930,7 @@ X, y = df_epic_am_det_clip_countryloc, df_obs_am_det_clip['Yield']
 
 # Standard model
 print('Standard Epic results:')
-y_pred_epic_am, y_pred_total_epic_am, model_epic_am, full_model_epic_am  = calibration(X, y, type_of_model='DNN')
+y_pred_epic_am, y_pred_total_epic_am, model_epic_am, full_model_epic_am  = calibration(X, y, type_of_model='RF')
 y_pred_epic_am_am_2012, y_pred_total_epic_am_2012, model_epic_am_2012, full_model_epic_am_2012 = calibration(X, y, type_of_model='RF',test_year = 2012)
 
 #%% Hybrid model
@@ -921,7 +976,7 @@ y_pred_hyb_am_rf, y_pred_total_hyb_am_rf, model_hyb_am_rf, full_model_hyb2_am_rf
 # Deep neural network - takes some time to run 
 y_pred_hyb_am2, y_pred_total_hyb_am2, model_hyb_am2, full_model_hyb_am2 = calibration(X, y, type_of_model='DNN')
 
-y_pred_hyb_am_2012, y_pred_total_hyb_am_2012, model_hyb_am_2012, full_model_hyb_am_2012 = calibration(X, y, type_of_model='RF',test_year = 2012)
+# y_pred_hyb_am_2012, y_pred_total_hyb_am_2012, model_hyb_am_2012, full_model_hyb_am_2012 = calibration(X, y, type_of_model='RF',test_year = 2012)
 
 # # =============================================================================
 # # Save the Model 

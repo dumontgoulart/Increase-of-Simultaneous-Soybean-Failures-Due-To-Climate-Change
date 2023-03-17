@@ -13,7 +13,9 @@ Created on Fri Aug 20 10:13:29 2021
 """
 
 import os
-os.chdir('C:/Users/morenodu/OneDrive - Stichting Deltares/Documents/PhD/Paper_drought/data')
+os.chdir('C:/Users/morenodu/OneDrive - Stichting Deltares/Documents/PhD/paper_hybrid_agri/data/ga_simulations')
+
+# os.chdir('C:/Users/morenodu/OneDrive - Stichting Deltares/Documents/PhD/Paper_drought/data')
 
 import xarray as xr 
 import numpy as np 
@@ -25,11 +27,7 @@ import cartopy.crs as ccrs
 import cartopy.io.shapereader as shpreader
 from  scipy import signal 
 import seaborn as sns
-from mask_shape_border import mask_shape_border
-from failure_probability import feature_importance_selection, failure_probability
-from stochastic_optimization_Algorithm import stochastic_optimization_Algorithm
-from shap_prop import shap_prop
-from bias_correction_masked import *
+# from mask_shape_border import mask_shape_border
 import matplotlib as mpl
 import pickle
 
@@ -177,6 +175,8 @@ plt.title('Soybean yield shock')
 plt.legend( title="",loc=3, fontsize='small', fancybox=True)
 plt.show()
 
+df_bar_br_us.to_csv("aggregated_shocks_soybean_br_us_gw.csv")
+
 #%%
 
 df_soy_glob_subset_xprp = df_soy_glob[ (df_soy_glob['VAR_ID'] == 'XPRP') & (df_soy_glob['VAR_UNIT'] == 'fm t/ha') & (df_soy_glob['MACROSCEN'] == 'SSP2') ] 
@@ -269,7 +269,6 @@ df_europe_imp_subset['GW degree'] = np.where(df_europe_imp_subset['IEA_SCEN'] ==
 def plot_shocks_socio(Item_sel, Var_id_sel, Region = 'EU'):
     df_europe_imp_scen = df_europe_imp_subset[ (df_europe_imp_subset['VAR_ID'] == Var_id_sel) & (df_europe_imp_subset['Item'] == Item_sel)  & (df_europe_imp_subset['ANYREGION'] == Region)] 
     df_europe_imp_ref_sub = df_europe_imp_ref[(df_europe_imp_ref['VAR_ID'] == Var_id_sel) & (df_europe_imp_ref['Item'] == Item_sel)& (df_europe_imp_ref['ANYREGION'] == Region)]  
-    print(df_europe_imp_scen)
     # BAR PLOTS EUROPE
     plt.figure(figsize = (7,5),dpi=300)
     sns.barplot(x=df_europe_imp_scen["GW degree"], y=df_europe_imp_scen["VALUE"], hue = df_europe_imp_scen['BIOENSCEN'], order = ['2.5°C', '3°C'])
@@ -278,6 +277,7 @@ def plot_shocks_socio(Item_sel, Var_id_sel, Region = 'EU'):
     plt.ylabel('Shock (%)')
     plt.legend()
     plt.show()
+    df_europe_imp_scen.to_csv(f'output_globiom_gw_{Item_sel}_{Var_id_sel}_{Region}.csv')
     
 plot_shocks_socio('Soya','CONS')
 plot_shocks_socio('Soya','XPRP')
@@ -304,7 +304,7 @@ df_europe_imp['gcm'] = df_europe_imp.IEA_SCEN.str.split('_').str[0]
 
 #%% Change visualization to degree of GW
 import glob
-def open_csv_timeseries(path= "projections_global_mean/ipsl-cm6a-lr_r1i1p1f1_w5e5_ssp126_tas_*.csv", pre_ind_tmep = 13.8):
+def open_csv_timeseries(path, pre_ind_tmep = 13.8):
     files = glob.glob(path)
     df = []
     for f in files:
@@ -317,16 +317,16 @@ def open_csv_timeseries(path= "projections_global_mean/ipsl-cm6a-lr_r1i1p1f1_w5e
 
     return df_2
 
-df_ipsl_26 = open_csv_timeseries("../projections_global_mean/ipsl-cm6a-lr_r1i1p1f1_w5e5_ssp126_tas_*.csv")
-df_ipsl_85 = open_csv_timeseries("../projections_global_mean/ipsl-cm6a-lr_r1i1p1f1_w5e5_ssp585_tas_*.csv")
+df_ipsl_26 = open_csv_timeseries("projections_global_mean/ipsl-cm6a-lr_r1i1p1f1_w5e5_ssp126_tas_*.csv")
+df_ipsl_85 = open_csv_timeseries("projections_global_mean/ipsl-cm6a-lr_r1i1p1f1_w5e5_ssp585_tas_*.csv")
 
 
-df_ukesm_26 = open_csv_timeseries("../projections_global_mean/ukesm1-0-ll_r1i1p1f2_w5e5_ssp126_tas_*.csv")
-df_ukesm_85 = open_csv_timeseries("../projections_global_mean/ukesm1-0-ll_r1i1p1f2_w5e5_ssp585_tas_*.csv")
+df_ukesm_26 = open_csv_timeseries("projections_global_mean/ukesm1-0-ll_r1i1p1f2_w5e5_ssp126_tas_*.csv")
+df_ukesm_85 = open_csv_timeseries("projections_global_mean/ukesm1-0-ll_r1i1p1f2_w5e5_ssp585_tas_*.csv")
 
 
-df_gfdl_26 = open_csv_timeseries("../projections_global_mean/gfdl-esm4_r1i1p1f1_w5e5_ssp126_tas_*.csv")
-df_gfdl_85 = open_csv_timeseries("../projections_global_mean/gfdl-esm4_r1i1p1f1_w5e5_ssp585_tas_*.csv")
+df_gfdl_26 = open_csv_timeseries("projections_global_mean/gfdl-esm4_r1i1p1f1_w5e5_ssp126_tas_*.csv")
+df_gfdl_85 = open_csv_timeseries("projections_global_mean/gfdl-esm4_r1i1p1f1_w5e5_ssp585_tas_*.csv")
 
 df_ipsl_26.groupby(df_ipsl_26.index.year)['tas'].transform('mean').plot()
 df_ipsl_85.groupby(df_ipsl_85.index.year)['tas'].transform('mean').plot()

@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import cartopy
 import cartopy.crs as ccrs
-import matplotlib as mplf
+import matplotlib as mpl
 
 mpl.rcParams['axes.spines.right'] = False
 mpl.rcParams['axes.spines.top'] = False
