@@ -1,4 +1,4 @@
-# soybean_failure_risk_cc_analogues
+# Increase of Simultaneous Soybean Failures Due To Climate Change
 This repository contains the model code and documentation for the paper Goulart, van der Wiel, Folberth, Boere and van den Hurk (2022, under review): "Increase of simultaneous soybean failures due to climate change".
 
 For the input and output data used in the paper: "Increase of simultaneous soybean failures due to climate change" Upon use of part of this dataset:
